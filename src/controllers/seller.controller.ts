@@ -4,14 +4,33 @@ import { catchAsync } from "../utils/catchAsync.js";
 import { Request, Response, NextFunction } from "express";
 
 export const addMedicine = catchAsync(async (req: any, res: Response) => {
-  const medicine = await prisma.medicine.create({
-    data: {
-      ...req.body,
-      sellerId: req.user?.id as string,
-    },
-  });
+  console.log("Incoming Medicine Data:", req.body);
+  const { name, price, stock, categoryId, manufacturer } = req.body;
 
-  res.status(201).json(medicine);
+  try {
+    const medicine = await prisma.medicine.create({
+      data: {
+        name: name,
+        price: Number(price),
+        stock: Number(stock),
+        sellerId: req.user?.id as string,
+        manufacturer: manufacturer || "Generic",
+
+        categoryId:
+          categoryId && categoryId.trim() !== "" ? categoryId : undefined,
+      },
+    });
+
+    console.log("Success! Medicine Created:", medicine.id);
+    res.status(201).json(medicine);
+  } catch (error: any) {
+    console.error("PRISMA ERROR:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Database error. Check if categoryId is valid.",
+      error: error.message,
+    });
+  }
 });
 
 export const updateMedicine = catchAsync(
@@ -25,9 +44,15 @@ export const updateMedicine = catchAsync(
     if (medicine.sellerId !== req.user.id)
       return next(new AppError("Not your medicine", 403));
 
+    const { name, price, stock, categoryId } = req.body;
     const updated = await prisma.medicine.update({
       where: { id: req.params.id },
-      data: req.body,
+      data: {
+        ...(name && { name }),
+        ...(price && { price: Number(price) }),
+        ...(stock && { stock: Number(stock) }),
+        ...(categoryId && { categoryId }),
+      },
     });
 
     res.json(updated);
@@ -62,10 +87,30 @@ export const getSellerOrders = catchAsync(async (req: any, res: Response) => {
         },
       },
     },
-    include: { items: true },
+    include: {
+      items: {
+        include: { medicine: true },
+      },
+    },
   });
 
   res.json(orders);
+});
+
+export const getMyMedicines = catchAsync(async (req: any, res: Response) => {
+  const medicines = await prisma.medicine.findMany({
+    where: {
+      sellerId: req.user.id,
+    },
+    include: {
+      category: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  res.json(medicines);
 });
 
 export const updateOrderStatus = catchAsync(async (req: any, res: Response) => {

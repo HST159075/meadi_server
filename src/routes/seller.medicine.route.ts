@@ -2,15 +2,20 @@ import express from "express";
 import { isAuthenticated } from "../middleware/auth.middleware";
 import { checkRole } from "../middleware/role.middleware.js";
 import {
-  createMedicine,
+  addMedicine,
   updateMedicine,
-  deleteMedicine
-} from "../controllers/medicine.controller.js";
+  deleteMedicine,
+  getMyMedicines,
+} from "../controllers/seller.controller.js";
 
 const router = express.Router();
 
-router.post("/", isAuthenticated, checkRole(["SELLER"]), createMedicine);
-router.put("/:id", isAuthenticated, checkRole(["SELLER"]), updateMedicine);
-router.delete("/:id", isAuthenticated, checkRole(["SELLER"]), deleteMedicine);
+router.use(isAuthenticated);
+router.use(checkRole(["SELLER"]));
+
+router.get("/", getMyMedicines);
+router.post("/", addMedicine);
+router.put("/:id", updateMedicine);
+router.delete("/:id", deleteMedicine);
 
 export default router;
