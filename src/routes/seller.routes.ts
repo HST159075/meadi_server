@@ -7,8 +7,6 @@ import {
   updateOrderStatus,
 } from "../controllers/seller.controller";
 
-
-
 const router = express.Router();
 
 router.post("/medicines", addMedicine);
