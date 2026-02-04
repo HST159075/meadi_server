@@ -17,14 +17,13 @@ async function main() {
       });
     }
   } catch (error) {
-    console.error("An error occurred:", error);
-    await prisma.$disconnect();
-    if (process.env.NODE_ENV !== "production") process.exit(1);
+    console.error("An error occurred during database connection:", error);
+
+    if (process.env.NODE_ENV !== "production") {
+      process.exit(1);
+    }
   }
 }
-
-if (process.env.NODE_ENV !== "production") {
-  main();
-}
+main();
 
 export default app;
