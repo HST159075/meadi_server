@@ -18,19 +18,16 @@ import { globalErrorHandler } from "./middleware/error.middleware.js";
 
 const app = express();
 
-
 app.use(
   cors({
-    origin: [
-      "https://medistore-dusky.vercel.app",
-    ],
+    origin: process.env.APP_URL,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-  })
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
 );
 
-app.options("*", cors());
+// app.options("*", cors());
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
