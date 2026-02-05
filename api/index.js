@@ -788,10 +788,8 @@ var globalErrorHandler = (err, req, res, next) => {
 var app = express11();
 app.use(
   cors({
-    origin: process.env.APP_URL,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
+    origin: process.env.APP_URL || "http://localhost:3000",
+    credentials: true
   })
 );
 app.use(express11.json());

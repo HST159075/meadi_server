@@ -11,11 +11,9 @@ async function main() {
     await prisma.$connect();
     console.log("Connected to the database successfully!");
 
-    if (process.env.NODE_ENV !== "production") {
-      app.listen(PORT, () => {
-        console.log(`Server running at http://localhost:${PORT}`);
-      });
-    }
+    app.listen(PORT, () => {
+      console.log(`Server running at http://localhost:${PORT}`);
+    });
   } catch (error) {
     console.error("An error occurred during database connection:", error);
 
@@ -25,5 +23,3 @@ async function main() {
   }
 }
 main();
-
-export default app;
