@@ -81,7 +81,6 @@ export const getMedicineById = async (req: Request, res: Response) => {
   }
 };
 
-// ৩. নতুন মেডিসিন তৈরি করা (Seller Only)
 export const createMedicine = async (req: AuthRequest, res: Response) => {
   try {
     const { name, price, description, categoryId, stock, manufacturer, image } =
