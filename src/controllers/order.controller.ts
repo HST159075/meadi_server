@@ -12,13 +12,74 @@ interface OrderItemInput {
 }
 
 
+// export const createOrder = async (req: AuthRequest, res: Response) => {
+//   try {
+//     const { items, address } = req.body;
+//     const customerId = req.user?.id as string;
+
+//     const order = await prisma.$transaction(async (tx) => {
+//       let totalPrice = 0;
+//       const orderItemsToCreate = [];
+
+//       for (const item of items) {
+//         const medicine = await tx.medicine.findUnique({
+//           where: { id: item.medicineId },
+//         });
+
+//         if (!medicine) throw new Error(`Medicine (ID: ${item.medicineId}) not found`);
+//         if (medicine.stock < item.quantity) {
+//           throw new Error(`${medicine.name} Not enough in stock.`);
+//         }
+
+//         const itemTotal = medicine.price * item.quantity;
+//         totalPrice += itemTotal;
+
+       
+//         orderItemsToCreate.push({
+//           medicineId: medicine.id,
+//           quantity: item.quantity,
+//           price: medicine.price, 
+//         });
+
+    
+//         await tx.medicine.update({
+//           where: { id: medicine.id },
+//           data: { stock: { decrement: item.quantity } },
+//         });
+//       }
+
+//       return await tx.order.create({
+//         data: {
+//           customerId,
+//           totalPrice : Number(totalPrice),
+//           address,
+//           status: "PENDING",
+//           items: {
+//             create: orderItemsToCreate,
+//           },
+//         },
+//         include: { items: true },
+//       });
+//     });
+
+//     res.status(201).json({ success: true, data: order });
+//   } catch (error: any) {
+//     res.status(400).json({ success: false, message: error.message });
+//   }
+// };
 export const createOrder = async (req: AuthRequest, res: Response) => {
   try {
-    const { items, address } = req.body;
+    // ১. ফোন নাম্বার এবং অ্যাড্রেস দুটোই রিসিভ করুন
+    const { items, address, phone, totalPrice: clientTotalPrice } = req.body;
     const customerId = req.user?.id as string;
 
+    // ভ্যালিডেশন
+    if (!items || items.length === 0) {
+      return res.status(400).json({ success: false, message: "Cart is empty" });
+    }
+
     const order = await prisma.$transaction(async (tx) => {
-      let totalPrice = 0;
+      let calculatedTotalPrice = 0;
       const orderItemsToCreate = [];
 
       for (const item of items) {
@@ -27,32 +88,35 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         });
 
         if (!medicine) throw new Error(`Medicine (ID: ${item.medicineId}) not found`);
+        
+        // স্টক চেক
         if (medicine.stock < item.quantity) {
-          throw new Error(`${medicine.name} Not enough in stock.`);
+          throw new Error(`${medicine.name} - Not enough in stock.`);
         }
 
         const itemTotal = medicine.price * item.quantity;
-        totalPrice += itemTotal;
+        calculatedTotalPrice += itemTotal;
 
-       
         orderItemsToCreate.push({
           medicineId: medicine.id,
           quantity: item.quantity,
           price: medicine.price, 
         });
 
-    
+        // স্টক কমানো
         await tx.medicine.update({
           where: { id: medicine.id },
           data: { stock: { decrement: item.quantity } },
         });
       }
 
+      // ২. অর্ডার তৈরি (ফোন নাম্বার থাকলে সেটিও ডাটাবেজে সেভ করুন)
       return await tx.order.create({
         data: {
           customerId,
-          totalPrice : Number(totalPrice),
+          totalPrice: calculatedTotalPrice, // ব্যাকএন্ডে ক্যালকুলেট করা মান ব্যবহার করা নিরাপদ
           address,
+          // phone: phone, // যদি আপনার স্কিমাতে ফোন ফিল্ড থাকে তবে এটি আনকমেন্ট করুন
           status: "PENDING",
           items: {
             create: orderItemsToCreate,
@@ -64,9 +128,14 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
 
     res.status(201).json({ success: true, data: order });
   } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error("ORDER_ERROR:", error); // এটি আপনার টার্মিনালে এররটি প্রিন্ট করবে
+    res.status(400).json({ 
+      success: false, 
+      message: error.message || "Something went wrong in the server" 
+    });
   }
 };
+
 
 export const getOrders = async (req: AuthRequest, res: Response) => {
   try {

@@ -126,9 +126,21 @@ var init_auth = __esm({
         "http://localhost:3000",
         "https://medistore-dusky.vercel.app"
       ],
+      session: {
+        cookieCache: {
+          enabled: true,
+          maxAge: 5 * 60
+          // 5 minutes
+        }
+      },
       advanced: {
         cookiePrefix: "better-auth",
-        useSecureCookies: true
+        useSecureCookies: process.env.NODE_ENV === "production",
+        crossSubDomainCookies: {
+          enabled: false
+        },
+        disableCSRFCheck: true
+        // Allow requests without Origin header (Postman, mobile apps, etc.)
       },
       user: {
         additionalFields: {
@@ -669,10 +681,13 @@ var init_order_controller = __esm({
     init_prisma();
     createOrder = async (req, res) => {
       try {
-        const { items, address } = req.body;
+        const { items, address, phone, totalPrice: clientTotalPrice } = req.body;
         const customerId = req.user?.id;
+        if (!items || items.length === 0) {
+          return res.status(400).json({ success: false, message: "Cart is empty" });
+        }
         const order = await prisma.$transaction(async (tx) => {
-          let totalPrice = 0;
+          let calculatedTotalPrice = 0;
           const orderItemsToCreate = [];
           for (const item of items) {
             const medicine = await tx.medicine.findUnique({
@@ -680,10 +695,10 @@ var init_order_controller = __esm({
             });
             if (!medicine) throw new Error(`Medicine (ID: ${item.medicineId}) not found`);
             if (medicine.stock < item.quantity) {
-              throw new Error(`${medicine.name} Not enough in stock.`);
+              throw new Error(`${medicine.name} - Not enough in stock.`);
             }
             const itemTotal = medicine.price * item.quantity;
-            totalPrice += itemTotal;
+            calculatedTotalPrice += itemTotal;
             orderItemsToCreate.push({
               medicineId: medicine.id,
               quantity: item.quantity,
@@ -697,8 +712,10 @@ var init_order_controller = __esm({
           return await tx.order.create({
             data: {
               customerId,
-              totalPrice: Number(totalPrice),
+              totalPrice: calculatedTotalPrice,
+              // ব্যাকএন্ডে ক্যালকুলেট করা মান ব্যবহার করা নিরাপদ
               address,
+              // phone: phone, // যদি আপনার স্কিমাতে ফোন ফিল্ড থাকে তবে এটি আনকমেন্ট করুন
               status: "PENDING",
               items: {
                 create: orderItemsToCreate
@@ -709,7 +726,11 @@ var init_order_controller = __esm({
         });
         res.status(201).json({ success: true, data: order });
       } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        console.error("ORDER_ERROR:", error);
+        res.status(400).json({
+          success: false,
+          message: error.message || "Something went wrong in the server"
+        });
       }
     };
     getOrders = async (req, res) => {

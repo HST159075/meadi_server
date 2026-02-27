@@ -17,9 +17,21 @@ export const auth = betterAuth({
     "http://localhost:3000",
     "https://medistore-dusky.vercel.app",
   ],
+
+  session: {
+    cookieCache: {
+      enabled: true,
+      maxAge: 5 * 60, // 5 minutes
+    },
+  },
   advanced: {
+
     cookiePrefix: "better-auth",
-    useSecureCookies: true,
+    useSecureCookies: process.env.NODE_ENV === "production",
+    crossSubDomainCookies: {
+      enabled: false,
+    },
+    disableCSRFCheck: true, // Allow requests without Origin header (Postman, mobile apps, etc.)
   },
   user: {
     additionalFields: {
