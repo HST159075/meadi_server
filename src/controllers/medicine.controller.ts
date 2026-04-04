@@ -1,14 +1,12 @@
 import { prisma } from "../lib/prisma";
 import { Request, Response, NextFunction } from "express";
 
-
 interface AuthRequest extends Request {
   user?: {
     id: string;
     role: string;
   };
 }
-
 
 export const authorize = (roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -22,7 +20,6 @@ export const authorize = (roles: string[]) => {
     next();
   };
 };
-
 
 export const getAllMedicines = async (req: Request, res: Response) => {
   try {
@@ -57,10 +54,9 @@ export const getAllMedicines = async (req: Request, res: Response) => {
   }
 };
 
-
 export const getMedicineById = async (req: Request, res: Response) => {
   try {
-    const id = req.params.id as string; 
+    const id = req.params.id as string;
     const medicine = await prisma.medicine.findUnique({
       where: { id },
       include: {
@@ -81,7 +77,6 @@ export const getMedicineById = async (req: Request, res: Response) => {
   }
 };
 
-// ৩. নতুন মেডিসিন তৈরি করা (Seller Only)
 export const createMedicine = async (req: AuthRequest, res: Response) => {
   try {
     const { name, price, description, categoryId, stock, manufacturer, image } =
@@ -91,24 +86,31 @@ export const createMedicine = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ message: "Seller identity not found." });
     }
 
+    if (!name || !price || !stock || !categoryId || !manufacturer) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Required fields are missing." });
+    }
+
     const medicine = await prisma.medicine.create({
       data: {
         name,
-        price: parseFloat(price),
-        description,
+        price: parseFloat(price.toString()),
+        description: description || null,
         categoryId,
-        stock: parseInt(stock),
+        stock: parseInt(stock.toString()),
         manufacturer,
-        image,
+        image: image || null,
         sellerId: req.user.id,
       },
     });
 
     res.status(201).json({ success: true, data: medicine });
   } catch (error) {
+    console.error(error);
     res
       .status(400)
-      .json({ success: false, message: "It was not possible to make medicine." });
+      .json({ success: false, message: "Could not create medicine record." });
   }
 };
 
@@ -126,27 +128,25 @@ export const updateMedicine = async (req: AuthRequest, res: Response) => {
         .status(404)
         .json({ success: false, message: "Medicine not found" });
     }
+
     if (req.user?.role !== "ADMIN" && existingMedicine.sellerId !== sellerId) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "You can only update your own medicines.",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "You can only update your own medicines.",
+      });
     }
 
     const { name, price, stock, description, categoryId, image, manufacturer } =
       req.body;
 
-
     const updateData: any = {};
 
-  
     if (name) updateData.name = name;
-    if (description) updateData.description = description;
     if (manufacturer) updateData.manufacturer = manufacturer;
-    if (image) updateData.image = image;
-    if (categoryId) updateData.categoryId = categoryId; 
+    if (categoryId) updateData.categoryId = categoryId;
+
+    if (description !== undefined) updateData.description = description;
+    if (image !== undefined) updateData.image = image;
 
     if (price !== undefined && price !== null) {
       updateData.price = parseFloat(price.toString());
@@ -158,7 +158,7 @@ export const updateMedicine = async (req: AuthRequest, res: Response) => {
 
     const medicine = await prisma.medicine.update({
       where: { id },
-      data: updateData, 
+      data: updateData,
     });
 
     res.status(200).json({ success: true, data: medicine });
@@ -168,11 +168,9 @@ export const updateMedicine = async (req: AuthRequest, res: Response) => {
   }
 };
 
-
-
 export const deleteMedicine = async (req: AuthRequest, res: Response) => {
   try {
-    const id = req.params.id as string; 
+    const id = req.params.id as string;
     const sellerId = req.user?.id;
 
     const existingMedicine = await prisma.medicine.findUnique({

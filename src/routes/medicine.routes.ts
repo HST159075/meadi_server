@@ -5,10 +5,8 @@ import {
   createMedicine,
   updateMedicine,
   deleteMedicine,
-  authorize
 } from "../controllers/medicine.controller";
-import { isAuthenticated } from "../middleware/auth.middleware";
-
+import { isAuthenticated, authorize } from "../middleware/auth.middleware";
 
 const router = express.Router();
 

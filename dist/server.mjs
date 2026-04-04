@@ -107,11 +107,21 @@ var init_prisma = __esm({
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { bearer } from "better-auth/plugins";
-var auth;
+import nodemailer from "nodemailer";
+var transporter, auth;
 var init_auth = __esm({
   "src/lib/auth.ts"() {
     "use strict";
     init_prisma();
+    transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
     auth = betterAuth({
       baseURL: process.env.BETTER_AUTH_URL || "https://meadi-server.onrender.com",
       database: prismaAdapter(prisma, {
@@ -120,17 +130,103 @@ var init_auth = __esm({
       secret: process.env.BETTER_AUTH_SECRET,
       plugins: [bearer()],
       emailAndPassword: {
-        enabled: true
+        enabled: true,
+        autoSignIn: false,
+        requireEmailVerification: true
       },
-      trustedOrigins: [
-        "http://localhost:3000",
-        "https://medistore-dusky.vercel.app"
-      ],
+      emailVerification: {
+        sendVerificationEmail: async ({ user, url, token }, request) => {
+          const verificationUrl = `${process.env.APP_URL}/verify-email?token=${token}`;
+          const info = await transporter.sendMail({
+            from: '"MediStore" <medistore.hst@gmail.com>',
+            to: user.email,
+            subject: "Verify Your Email - MediStore",
+            html: `
+       <!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Email</title>
+    <style>
+        /* Mobile-first styles */
+        @media screen and (max-width: 600px) {
+            .container {
+                width: 100% !important;
+                padding: 10px !important;
+            }
+            .button {
+                display: block !important;
+                width: 100% !important;
+                box-sizing: border-box;
+            }
+        }
+    </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f7f9; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+            <td align="center" style="padding: 40px 0;">
+                <table class="container" border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+                    <!-- Header -->
+                    <tr>
+                        <td align="center" style="background-color: #2563eb; padding: 30px 0;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold;">MediStore</h1>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <h2 style="color: #1f2937; margin-top: 0;">Verify your email address</h2>
+                            <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">
+                                Thanks for signing up! We're excited to have you on board. To complete your registration and start exploring, please click the button below to verify your account.
+                            </p>
+                            
+                            <!-- Action Button -->
+                            <div style="padding: 30px 0; text-align: center;">
+                                <a href="${verificationUrl}" target="_blank" style="background-color: #2563eb; color: #ffffff; padding: 14px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block;">
+                                    Verify Email Address
+                                </a>
+                            </div>
+                            
+                            <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
+                                If you did not create an account, you can safely ignore this email. This link will expire in 24 hours.
+                            </p>
+                            
+                            <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+                            
+                            <!-- Troubleshoot -->
+                            <p style="color: #9ca3af; font-size: 12px; line-height: 1.5;">
+                                If you're having trouble clicking the button, copy and paste the URL below into your web browser:
+                                <br>
+                                <a href="${verificationUrl}" style="color: #2563eb; word-break: break-all;">${verificationUrl}</a>
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px; text-align: center; color: #9ca3af; font-size: 12px;">
+                            <p style="margin: 0;">&copy; 2026 MediStore. All rights reserved.</p>
+                            <p style="margin: 5px 0 0;">123 Health Ave, Suite 456, City, Country</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+      `
+          });
+        }
+      },
+      trustedOrigins: [process.env.APP_URL || "http://localhost:3000"],
       session: {
         cookieCache: {
           enabled: true,
-          maxAge: 5 * 60
-          // 5 minutes
+          maxAge: 20 * 60
         }
       },
       advanced: {
@@ -140,7 +236,6 @@ var init_auth = __esm({
           enabled: false
         },
         disableCSRFCheck: true
-        // Allow requests without Origin header (Postman, mobile apps, etc.)
       },
       user: {
         additionalFields: {
@@ -240,7 +335,7 @@ var init_role_middleware = __esm({
 
 // src/middleware/auth.middleware.ts
 import { fromNodeHeaders } from "better-auth/node";
-var isAuthenticated;
+var isAuthenticated, authorize;
 var init_auth_middleware = __esm({
   "src/middleware/auth.middleware.ts"() {
     "use strict";
@@ -256,11 +351,10 @@ var init_auth_middleware = __esm({
           console.log("Auth Failed: No session found");
           return res.status(401).json({
             success: false,
-            message: "Unauthorized: Session not found. Please login.\u0964"
+            message: "Unauthorized: Session not found. Please login."
           });
         }
         const user = session.user;
-        console.log("User Role from Session:", user.role);
         if (user.status === false) {
           return res.status(403).json({
             success: false,
@@ -282,16 +376,28 @@ var init_auth_middleware = __esm({
         });
       }
     };
+    authorize = (roles) => {
+      return (req, res, next) => {
+        const user = req.user;
+        if (!user || !roles.includes(user.role)) {
+          return res.status(403).json({
+            success: false,
+            message: "You do not have permission to perform this action."
+          });
+        }
+        next();
+      };
+    };
   }
 });
 
 // src/controllers/medicine.controller.ts
-var authorize, getAllMedicines, getMedicineById, createMedicine, updateMedicine, deleteMedicine;
+var authorize2, getAllMedicines, getMedicineById, createMedicine, updateMedicine, deleteMedicine;
 var init_medicine_controller = __esm({
   "src/controllers/medicine.controller.ts"() {
     "use strict";
     init_prisma();
-    authorize = (roles) => {
+    authorize2 = (roles) => {
       return (req, res, next) => {
         const user = req.user;
         if (!user || !roles.includes(user.role)) {
@@ -354,21 +460,25 @@ var init_medicine_controller = __esm({
         if (!req.user?.id) {
           return res.status(401).json({ message: "Seller identity not found." });
         }
+        if (!name || !price || !stock || !categoryId || !manufacturer) {
+          return res.status(400).json({ success: false, message: "Required fields are missing." });
+        }
         const medicine = await prisma.medicine.create({
           data: {
             name,
-            price: parseFloat(price),
-            description,
+            price: parseFloat(price.toString()),
+            description: description || null,
             categoryId,
-            stock: parseInt(stock),
+            stock: parseInt(stock.toString()),
             manufacturer,
-            image,
+            image: image || null,
             sellerId: req.user.id
           }
         });
         res.status(201).json({ success: true, data: medicine });
       } catch (error) {
-        res.status(400).json({ success: false, message: "It was not possible to make medicine." });
+        console.error(error);
+        res.status(400).json({ success: false, message: "Could not create medicine record." });
       }
     };
     updateMedicine = async (req, res) => {
@@ -390,10 +500,10 @@ var init_medicine_controller = __esm({
         const { name, price, stock, description, categoryId, image, manufacturer } = req.body;
         const updateData = {};
         if (name) updateData.name = name;
-        if (description) updateData.description = description;
         if (manufacturer) updateData.manufacturer = manufacturer;
-        if (image) updateData.image = image;
         if (categoryId) updateData.categoryId = categoryId;
+        if (description !== void 0) updateData.description = description;
+        if (image !== void 0) updateData.image = image;
         if (price !== void 0 && price !== null) {
           updateData.price = parseFloat(price.toString());
         }
@@ -432,30 +542,98 @@ var init_medicine_controller = __esm({
 });
 
 // src/controllers/admin.controller.ts
-var getUsers, updateUserStatus, getAllOrders;
+var getDashboardStats, getUsers, updateUserStatus, getAllOrders;
 var init_admin_controller = __esm({
   "src/controllers/admin.controller.ts"() {
     "use strict";
     init_prisma();
+    getDashboardStats = async (req, res) => {
+      try {
+        const sevenDaysAgo = /* @__PURE__ */ new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const deliveredWhere = {
+          status: { equals: "DELIVERED", mode: "insensitive" }
+        };
+        const salesData = await prisma.order.groupBy({
+          by: ["createdAt"],
+          where: {
+            ...deliveredWhere,
+            createdAt: { gte: sevenDaysAgo }
+          },
+          _sum: { totalPrice: true },
+          orderBy: { createdAt: "asc" }
+        });
+        const salesHistory = salesData.map((item) => ({
+          date: new Date(item.createdAt).toLocaleDateString("en-US", { day: "2-digit", month: "short" }),
+          amount: item._sum.totalPrice || 0
+        }));
+        const revenue = await prisma.order.aggregate({
+          where: deliveredWhere,
+          _sum: { totalPrice: true }
+        });
+        const [userCount, medicineCount, orderCount, lowStockCount] = await Promise.all([
+          prisma.user.count({ where: { role: "CUSTOMER" } }),
+          prisma.medicine.count(),
+          prisma.order.count(),
+          prisma.medicine.count({ where: { stock: { lt: 5 } } })
+        ]);
+        const recentOrders = await prisma.order.findMany({
+          take: 5,
+          orderBy: { createdAt: "desc" },
+          include: { customer: { select: { name: true } } }
+        });
+        res.json({
+          success: true,
+          data: {
+            totalRevenue: revenue._sum.totalPrice || 0,
+            totalCustomers: userCount,
+            totalMedicines: medicineCount,
+            totalOrders: orderCount,
+            lowStockAlert: lowStockCount,
+            recentOrders,
+            salesHistory
+          }
+        });
+      } catch (error) {
+        console.error("Dashboard Stats Error:", error);
+        res.status(500).json({ success: false, message: "Stats load error" });
+      }
+    };
     getUsers = async (req, res) => {
-      const users = await prisma.user.findMany({
-        select: { id: true, name: true, email: true, role: true, status: true }
-      });
-      res.json(users);
+      try {
+        const users = await prisma.user.findMany({
+          select: { id: true, name: true, email: true, role: true, status: true }
+        });
+        res.json(users);
+      } catch (error) {
+        res.status(500).json({ success: false, message: "Failed to fetch users" });
+      }
     };
     updateUserStatus = async (req, res) => {
-      const { status } = req.body;
-      const user = await prisma.user.update({
-        where: { id: req.params.id },
-        data: { status }
-      });
-      res.json(user);
+      try {
+        const { status } = req.body;
+        const user = await prisma.user.update({
+          where: { id: req.params.id },
+          data: { status }
+        });
+        res.json(user);
+      } catch (error) {
+        res.status(500).json({ success: false, message: "Failed to update status" });
+      }
     };
     getAllOrders = async (req, res) => {
-      const orders = await prisma.order.findMany({
-        include: { items: { include: { medicine: true } }, customer: true }
-      });
-      res.json(orders);
+      try {
+        const orders = await prisma.order.findMany({
+          include: {
+            items: { include: { medicine: true } },
+            customer: { select: { name: true, email: true } }
+          },
+          orderBy: { createdAt: "desc" }
+        });
+        res.json(orders);
+      } catch (error) {
+        res.status(500).json({ success: false, message: "Failed to fetch orders" });
+      }
     };
   }
 });
@@ -472,7 +650,8 @@ var init_admin_rotes = __esm({
     init_admin_controller();
     router2 = express2.Router();
     router2.use(isAuthenticated);
-    router2.use(authorize(["ADMIN"]));
+    router2.use(authorize2(["ADMIN"]));
+    router2.get("/stats", getDashboardStats);
     router2.get("/users", isAuthenticated, checkRole(["ADMIN"]), getUsers);
     router2.patch("/users/:id", isAuthenticated, checkRole(["ADMIN"]), updateUserStatus);
     router2.get("/orders", isAuthenticated, checkRole(["ADMIN"]), getAllOrders);
@@ -713,9 +892,7 @@ var init_order_controller = __esm({
             data: {
               customerId,
               totalPrice: calculatedTotalPrice,
-              // ব্যাকএন্ডে ক্যালকুলেট করা মান ব্যবহার করা নিরাপদ
               address,
-              // phone: phone, // যদি আপনার স্কিমাতে ফোন ফিল্ড থাকে তবে এটি আনকমেন্ট করুন
               status: "PENDING",
               items: {
                 create: orderItemsToCreate
@@ -772,8 +949,9 @@ var init_order_controller = __esm({
     };
     updateOrderStatus2 = async (req, res) => {
       try {
-        const { status } = req.body;
+        const { status: rawStatus } = req.body;
         const orderId = req.params.id;
+        const status = String(rawStatus || "").trim().toUpperCase();
         const validStatuses = ["PENDING", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"];
         if (!validStatuses.includes(status)) {
           return res.status(400).json({ message: "Invalid status code" });
@@ -838,28 +1016,60 @@ var init_category_controller = __esm({
     init_catchAsync();
     init_AppError();
     createCategory = catchAsync(async (req, res) => {
+      const { name } = req.body;
+      if (!name) {
+        throw new AppError("Category name is required", 400);
+      }
       const category = await prisma.category.create({
-        data: { name: req.body.name }
+        data: { name }
       });
-      res.status(201).json(category);
+      res.status(201).json({
+        success: true,
+        data: category
+      });
     });
     getCategories = catchAsync(async (req, res) => {
-      const categories = await prisma.category.findMany();
-      res.json(categories);
+      const categories = await prisma.category.findMany({
+        orderBy: { name: "asc" }
+      });
+      res.status(200).json({
+        success: true,
+        data: categories
+      });
     });
     updateCategory = catchAsync(async (req, res, next) => {
+      const { id } = req.params;
+      const { name } = req.body;
+      const existingCategory = await prisma.category.findUnique({
+        where: { id }
+      });
+      if (!existingCategory) {
+        return next(new AppError("Category not found", 404));
+      }
       const category = await prisma.category.update({
-        where: { id: req.params.id },
-        data: { name: req.body.name }
+        where: { id },
+        data: { name }
       });
-      if (!category) return next(new AppError("Category not found", 404));
-      res.json(category);
+      res.status(200).json({
+        success: true,
+        data: category
+      });
     });
-    deleteCategory = catchAsync(async (req, res) => {
-      await prisma.category.delete({
-        where: { id: req.params.id }
+    deleteCategory = catchAsync(async (req, res, next) => {
+      const { id } = req.params;
+      const existingCategory = await prisma.category.findUnique({
+        where: { id }
       });
-      res.json({ message: "Deleted" });
+      if (!existingCategory) {
+        return next(new AppError("Category not found", 404));
+      }
+      await prisma.category.delete({
+        where: { id }
+      });
+      res.status(200).json({
+        success: true,
+        message: "Category deleted successfully"
+      });
     });
   }
 });

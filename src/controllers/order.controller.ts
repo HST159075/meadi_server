@@ -103,20 +103,20 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           price: medicine.price, 
         });
 
-        // স্টক কমানো
+       
         await tx.medicine.update({
           where: { id: medicine.id },
           data: { stock: { decrement: item.quantity } },
         });
       }
 
-      // ২. অর্ডার তৈরি (ফোন নাম্বার থাকলে সেটিও ডাটাবেজে সেভ করুন)
+      
       return await tx.order.create({
         data: {
           customerId,
-          totalPrice: calculatedTotalPrice, // ব্যাকএন্ডে ক্যালকুলেট করা মান ব্যবহার করা নিরাপদ
+          totalPrice: calculatedTotalPrice, 
           address,
-          // phone: phone, // যদি আপনার স্কিমাতে ফোন ফিল্ড থাকে তবে এটি আনকমেন্ট করুন
+          
           status: "PENDING",
           items: {
             create: orderItemsToCreate,
@@ -128,7 +128,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
 
     res.status(201).json({ success: true, data: order });
   } catch (error: any) {
-    console.error("ORDER_ERROR:", error); // এটি আপনার টার্মিনালে এররটি প্রিন্ট করবে
+    console.error("ORDER_ERROR:", error); 
     res.status(400).json({ 
       success: false, 
       message: error.message || "Something went wrong in the server" 
@@ -181,9 +181,10 @@ export const getSellerOrders = async (req: AuthRequest, res: Response) => {
 
 export const updateOrderStatus = async (req: Request, res: Response) => {
   try {
-    const { status } = req.body;
+    const { status: rawStatus } = req.body;
     const orderId = req.params.id as string;
 
+    const status = String(rawStatus || "").trim().toUpperCase();
     const validStatuses = ["PENDING", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid status code" });
